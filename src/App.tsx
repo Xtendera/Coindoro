@@ -1,62 +1,239 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from 'react';
 
-import { Timer } from "./components/Timer";
+import { Timer } from './components/Timer';
+import { Coins } from './components/Coins';
+import { Button } from './components/ui/button';
+import { Popup } from './components/ui/popup';
 
-const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const MINUTE = 60 * 10;
+const SESSION_LENGTH_MS = MINUTE * 25;
+const COIN_INTERVAL_MS = 5 * 60 * 1000;
+const COINS_PER_BREAK_MINUTE = 1;
 
 const App = () => {
-    const [deadline] = useState(() => new Date(Date.now() + DAY_IN_MS));
-    const [timeRemaining, setTimeRemaining] = useState(() =>
-        Math.max(0, deadline.getTime() - Date.now()),
+  const [deadline, setDeadline] = useState(
+    () => new Date(Date.now() + SESSION_LENGTH_MS)
+  );
+  const [timeRemaining, setTimeRemaining] = useState(() =>
+    Math.max(0, deadline.getTime() - Date.now())
+  );
+  const [paused, setPaused] = useState(false);
+  const [activePanel, setActivePanel] = useState<'timer' | 'coins'>('timer');
+  const [coinBank, setCoinBank] = useState(150);
+  const [isShopOpen, setIsShopOpen] = useState(false);
+  const [breakMinutes, setBreakMinutes] = useState(0);
+
+  const totalSeconds = Math.max(0, Math.floor(timeRemaining / 1000));
+  const minutes = Math.floor(totalSeconds / 60)
+    .toString()
+    .padStart(2, '0');
+  const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+  const dynamicTitle = `${minutes}:${seconds} - Coindoro`;
+
+  const defaultTitleRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    if (defaultTitleRef.current === undefined) {
+      defaultTitleRef.current = document.title;
+    }
+
+    document.title = dynamicTitle;
+  }, [dynamicTitle]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    return () => {
+      if (defaultTitleRef.current !== undefined) {
+        document.title = defaultTitleRef.current;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (timeRemaining <= 0 && !paused) {
+      setPaused(true);
+    }
+  }, [paused, timeRemaining]);
+
+  const handleToggleTimer = () => {
+    setPaused((previous) => !previous);
+  };
+
+  const handleRestart = () => {
+    const coinsEarned = Math.max(
+      0,
+      (SESSION_LENGTH_MS - timeRemaining) / COIN_INTERVAL_MS
     );
 
-    // Temp constant
-    const paused = false;
+    if (coinsEarned > 0) {
+      setCoinBank((previous) => previous + coinsEarned);
+    }
 
-    const totalSeconds = Math.max(0, Math.floor(timeRemaining / 1000));
-    const minutes = Math.floor(totalSeconds / 60)
-        .toString()
-        .padStart(2, "0");
-    const seconds = (totalSeconds % 60).toString().padStart(2, "0");
-    const dynamicTitle = `${minutes}:${seconds} - Coindoro`;
+    const nextDeadline = new Date(Date.now() + SESSION_LENGTH_MS);
+    setDeadline(nextDeadline);
+    setTimeRemaining(Math.max(0, nextDeadline.getTime() - Date.now()));
+    setPaused(false);
+  };
 
-    const defaultTitleRef = useRef<string | undefined>(undefined);
+  const isFinished = timeRemaining <= 0;
+  const buttonLabel = paused ? 'Start' : 'Pause';
+  const isTimerExpanded = activePanel === 'timer';
+  const breakCost = breakMinutes * COINS_PER_BREAK_MINUTE;
+  const canPurchaseBreak = breakMinutes > 0 && breakCost <= coinBank;
 
-    useEffect(() => {
-        if (typeof document === "undefined") {
-            return;
-        }
+  const handleIncrementBreak = () => {
+    setBreakMinutes((previous) => previous + 1);
+  };
 
-        if (defaultTitleRef.current === undefined) {
-            defaultTitleRef.current = document.title;
-        }
+  const handleDecrementBreak = () => {
+    setBreakMinutes((previous) => Math.max(0, previous - 1));
+  };
 
-        document.title = dynamicTitle;
-    }, [dynamicTitle]);
+  const handleBreakMinutesChange = (value: string) => {
+    const parsed = Number.parseInt(value, 10);
 
-    useEffect(() => {
-        if (typeof document === "undefined") {
-            return;
-        }
+    if (Number.isNaN(parsed) || parsed < 0) {
+      setBreakMinutes(0);
+      return;
+    }
 
-        return () => {
-            if (defaultTitleRef.current !== undefined) {
-                document.title = defaultTitleRef.current;
-            }
-        };
-    }, []);
+    setBreakMinutes(parsed);
+  };
 
-    return (
-        <main className="flex min-h-screen w-full items-center justify-center bg-slate-900 px-4 py-16 text-white">
-            <Timer
-                deadline={deadline}
-                title={dynamicTitle}
-                paused={paused}
-                timeRemaining={timeRemaining}
-                setTimeRemaining={setTimeRemaining}
-            />
-        </main>
-    );
+  const handlePurchaseBreak = () => {
+    if (!canPurchaseBreak) {
+      return;
+    }
+
+    setCoinBank((previous) => Math.max(0, previous - breakCost));
+    setBreakMinutes(0);
+    setIsShopOpen(false);
+  };
+
+  return (
+    <main className="flex min-h-screen w-full items-center justify-center bg-background px-4 py-16 text-foreground">
+      <div className="flex flex-col items-center gap-6">
+        <Coins
+          variant={isTimerExpanded ? 'compact' : 'expanded'}
+          onClick={isTimerExpanded ? () => setActivePanel('coins') : undefined}
+          timeRemaining={timeRemaining}
+          sessionDuration={SESSION_LENGTH_MS}
+          deadline={deadline}
+          paused={paused}
+          baseCoins={coinBank}
+        />
+        <Timer
+          deadline={deadline}
+          paused={paused}
+          timeRemaining={timeRemaining}
+          setTimeRemaining={setTimeRemaining}
+          variant={isTimerExpanded ? 'expanded' : 'compact'}
+          onClick={isTimerExpanded ? undefined : () => setActivePanel('timer')}
+        />
+        <div className="flex items-center gap-3">
+          {!isFinished && (
+            <Button
+              onClick={handleToggleTimer}
+              variant="default"
+              className="cursor-pointer"
+            >
+              {buttonLabel}
+            </Button>
+          )}
+          {isFinished && (
+            <Button
+              onClick={handleRestart}
+              variant="secondary"
+              className="cursor-pointer"
+            >
+              Restart
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            className="cursor-pointer"
+            onClick={() => setIsShopOpen(true)}
+          >
+            Shop
+          </Button>
+        </div>
+      </div>
+      <Popup
+        open={isShopOpen}
+        onClose={() => setIsShopOpen(false)}
+        eyebrow="Shop" /* Apparently this is called an eyebrow. Who would've thunk! */ 
+      >
+        <div className="space-y-6 text-sm leading-relaxed">
+          <p>
+            You look like you could use a break!
+          </p>
+          <div className="rounded-3xl border border-primary/20 p-4 shadow-sm">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-primary">
+                <span>Balance</span>
+                <span>{coinBank.toFixed(2)} coins</span>
+              </div>
+              <div className="flex flex-col gap-3">
+                <label className="text-xs uppercase tracking-[0.3em] text-primary">
+                  Break length (minutes)
+                </label>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon-sm"
+                    onClick={handleDecrementBreak}
+                    aria-label="Decrease break minutes"
+                  >
+                    −
+                  </Button>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    className="w-24 rounded-2xl bg-background px-3 py-2 text-center font-mono text-lg text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    value={breakMinutes.toString()}
+                    onChange={(event) => handleBreakMinutesChange(event.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon-sm"
+                    onClick={handleIncrementBreak}
+                    aria-label="Increase break minutes"
+                  >
+                    +
+                  </Button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-primary">
+                <span>Cost</span>
+                <span>{breakCost.toFixed(2)} coins</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="default"
+              className="px-6"
+              disabled={!canPurchaseBreak}
+              onClick={handlePurchaseBreak}
+            >
+              Purchase break
+            </Button>
+          </div>
+        </div>
+      </Popup>
+    </main>
+  );
 };
 
 export default App;
