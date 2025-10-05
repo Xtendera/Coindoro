@@ -323,6 +323,7 @@ const App = () => {
                     type="number"
                     inputMode="numeric"
                     min={0}
+                    step={1}
                     className="w-24 rounded-2xl bg-background px-3 py-2 text-center font-mono text-lg text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                     value={breakMinutes.toString()}
                     onChange={(event) =>

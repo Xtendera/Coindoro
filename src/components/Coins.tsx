@@ -122,9 +122,10 @@ export const Coins = ({
         onClick={onClick}
         disabled={!isInteractive}
         className={cn(
-          'w-full rounded-3xl border border-primary/30 bg-card text-primary backdrop-blur-sm shadow-lg transition-all duration-300 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+          'w-full rounded-3xl border border-primary/30 bg-card backdrop-blur-sm shadow-lg transition-all duration-300 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
           isCompact ? 'px-6 py-3' : 'p-10',
-          isInteractive ? 'cursor-pointer' : 'cursor-default'
+          isInteractive ? 'cursor-pointer' : 'cursor-default',
+          breakActive ? 'text-amber-300' : 'text-primary'
         )}
       >
         {isCompact ? (
@@ -145,7 +146,7 @@ export const Coins = ({
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center gap-6">
-            <span className="uppercase tracking-[0.35em] text-sm text-primary">
+            <span className="uppercase tracking-[0.35em] text-sm">
               Coins
             </span>
             <div className="flex items-center gap-4">

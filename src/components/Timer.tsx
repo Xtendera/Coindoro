@@ -95,7 +95,7 @@ export const Timer = ({
 
   const activeLabel = isBreakMode ? 'Break time!' : 'Work time!';
   const finishedLabel = isBreakMode ? 'Break over!' : 'Time over!';
-  const compactLabel = isBreakMode ? 'Break' : 'Timer';
+  const compactLabel = isBreakMode ? 'Break' : 'Work';
 
   const accentClass = isBreakMode ? 'text-amber-300' : 'text-primary';
 
