@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Timer } from './components/Timer';
 import { Coins } from './components/Coins';
 import { Button } from './components/ui/button';
 import { Popup } from './components/ui/popup';
 
-const MINUTE = 60 * 10;
+const MINUTE = 60 * 1000;
 const SESSION_LENGTH_MS = MINUTE * 25;
 const COIN_INTERVAL_MS = 5 * 60 * 1000;
 const COINS_PER_BREAK_MINUTE = 1;
@@ -18,19 +18,31 @@ const App = () => {
     Math.max(0, deadline.getTime() - Date.now())
   );
   const [paused, setPaused] = useState(false);
+  const [mode, setMode] = useState<'work' | 'break'>('work');
   const [activePanel, setActivePanel] = useState<'timer' | 'coins'>('timer');
   const [coinBank, setCoinBank] = useState(150);
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [breakMinutes, setBreakMinutes] = useState(0);
+  const [notificationPermission, setNotificationPermission] =
+    useState<NotificationPermission>(() => {
+      if (typeof window === 'undefined' || typeof Notification === 'undefined') {
+        return 'denied';
+      }
+
+      return Notification.permission;
+    });
 
   const totalSeconds = Math.max(0, Math.floor(timeRemaining / 1000));
   const minutes = Math.floor(totalSeconds / 60)
     .toString()
     .padStart(2, '0');
   const seconds = (totalSeconds % 60).toString().padStart(2, '0');
-  const dynamicTitle = `${minutes}:${seconds} - Coindoro`;
+  const dynamicTitle = `${minutes}:${seconds} - Coindoro${
+    mode === 'break' ? ' (Break)' : ''
+  }`;
 
   const defaultTitleRef = useRef<string | undefined>(undefined);
+  const previousTimeRef = useRef(timeRemaining);
 
   useEffect(() => {
     if (typeof document === 'undefined') {
@@ -62,8 +74,52 @@ const App = () => {
     }
   }, [paused, timeRemaining]);
 
+  const scheduleTimer = useCallback((durationMs: number) => {
+    const nextDeadline = new Date(Date.now() + durationMs);
+    setDeadline(nextDeadline);
+    setTimeRemaining(Math.max(0, nextDeadline.getTime() - Date.now()));
+  }, []);
+
+  const startWorkSession = useCallback(
+    (options?: { autoStart?: boolean }) => {
+      const autoStart = options?.autoStart ?? true; // TODO: Configuration menu
+      scheduleTimer(SESSION_LENGTH_MS);
+      setMode('work');
+      setPaused(!autoStart);
+    },
+    [scheduleTimer]
+  );
+
+  const requestNotificationPermission = useCallback(async () => {
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') {
+      setNotificationPermission('denied');
+      return 'denied' as NotificationPermission;
+    }
+
+    if (Notification.permission === 'default') {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      return permission;
+    }
+
+    setNotificationPermission(Notification.permission);
+    return Notification.permission;
+  }, []);
+
   const handleToggleTimer = () => {
-    setPaused((previous) => !previous);
+    if (mode === 'break') {
+      return;
+    }
+
+    if (paused && notificationPermission === 'default') {
+      void requestNotificationPermission();
+    }
+
+    setPaused((previous) => {
+      const next = !previous;
+      setDeadline(new Date(Date.now() + Math.max(0, timeRemaining)));
+      return next;
+    });
   };
 
   const handleRestart = () => {
@@ -76,13 +132,57 @@ const App = () => {
       setCoinBank((previous) => previous + coinsEarned);
     }
 
-    const nextDeadline = new Date(Date.now() + SESSION_LENGTH_MS);
-    setDeadline(nextDeadline);
-    setTimeRemaining(Math.max(0, nextDeadline.getTime() - Date.now()));
-    setPaused(false);
+    startWorkSession();
   };
 
-  const isFinished = timeRemaining <= 0;
+  const handleEndBreak = () => {
+    startWorkSession({ autoStart: false });
+  };
+
+  useEffect(() => {
+    if (mode === 'break' && timeRemaining <= 0) {
+      startWorkSession({ autoStart: false });
+    }
+  }, [mode, timeRemaining, startWorkSession]);
+
+  useEffect(() => {
+    const previous = previousTimeRef.current;
+
+    if (
+      typeof window !== 'undefined' &&
+      typeof Notification !== 'undefined' &&
+      previous > 0 &&
+      timeRemaining <= 0
+    ) {
+      const notify = async () => {
+        let permission = notificationPermission;
+
+        if (permission === 'default') {
+          permission = await requestNotificationPermission();
+        }
+
+        if (permission === 'granted') {
+          const title = mode === 'break' ? 'Break finished' : 'Focus session complete';
+          const body =
+            mode === 'break'
+              ? 'Break time is over. Ready to get back to the grind?'
+              : 'Good stuff, your focus timer just hit zero. Select a new work or fun timer!';
+
+          new Notification(title, {
+            body,
+            tag: 'coindoro-timer-complete',
+          });
+        }
+      };
+
+      void notify();
+    }
+
+    previousTimeRef.current = timeRemaining;
+  }, [timeRemaining, mode, notificationPermission, requestNotificationPermission]);
+
+  const isBreakMode = mode === 'break';
+  const isFinished = mode === 'work' && timeRemaining <= 0;
   const buttonLabel = paused ? 'Start' : 'Pause';
   const isTimerExpanded = activePanel === 'timer';
   const breakCost = breakMinutes * COINS_PER_BREAK_MINUTE;
@@ -108,26 +208,40 @@ const App = () => {
   };
 
   const handlePurchaseBreak = () => {
-    if (!canPurchaseBreak) {
+    if (!canPurchaseBreak || isBreakMode) {
+      return;
+    }
+
+    const breakDurationMs = breakMinutes * MINUTE;
+
+    if (breakDurationMs <= 0) {
       return;
     }
 
     setCoinBank((previous) => Math.max(0, previous - breakCost));
+    scheduleTimer(breakDurationMs);
+    setMode('break');
+    setPaused(false);
+    setActivePanel('timer');
     setBreakMinutes(0);
     setIsShopOpen(false);
   };
 
   return (
-    <main className="flex min-h-screen w-full items-center justify-center bg-background px-4 py-16 text-foreground">
+    <main
+      className={`flex min-h-screen w-full items-center justify-center px-4 py-16 text-foreground transition-colors duration-700 ${
+        isBreakMode ? 'bg-orange-900' : 'bg-background'
+      }`}
+    >
       <div className="flex flex-col items-center gap-6">
         <Coins
           variant={isTimerExpanded ? 'compact' : 'expanded'}
           onClick={isTimerExpanded ? () => setActivePanel('coins') : undefined}
-          timeRemaining={timeRemaining}
           sessionDuration={SESSION_LENGTH_MS}
           deadline={deadline}
           paused={paused}
           baseCoins={coinBank}
+          breakActive={isBreakMode}
         />
         <Timer
           deadline={deadline}
@@ -136,9 +250,18 @@ const App = () => {
           setTimeRemaining={setTimeRemaining}
           variant={isTimerExpanded ? 'expanded' : 'compact'}
           onClick={isTimerExpanded ? undefined : () => setActivePanel('timer')}
+          mode={mode}
         />
         <div className="flex items-center gap-3">
-          {!isFinished && (
+          {isBreakMode ? (
+            <Button
+              onClick={handleEndBreak}
+              variant="destructive"
+              className="cursor-pointer"
+            >
+              End Break
+            </Button>
+          ) : !isFinished ? (
             <Button
               onClick={handleToggleTimer}
               variant="default"
@@ -146,8 +269,7 @@ const App = () => {
             >
               {buttonLabel}
             </Button>
-          )}
-          {isFinished && (
+          ) : (
             <Button
               onClick={handleRestart}
               variant="secondary"
@@ -168,12 +290,15 @@ const App = () => {
       <Popup
         open={isShopOpen}
         onClose={() => setIsShopOpen(false)}
-        eyebrow="Shop" /* Apparently this is called an eyebrow. Who would've thunk! */ 
+        eyebrow="Shop" /* Apparently this is called an eyebrow. Who would've thunk! */
       >
         <div className="space-y-6 text-sm leading-relaxed">
-          <p>
-            You look like you could use a break!
-          </p>
+          <p>You look like you could use a break!</p>
+          {isBreakMode && (
+            <div className="rounded-2xl border border-amber-400/40 bg-amber-950/40 px-4 py-3 text-xs uppercase tracking-[0.3em] text-amber-200">
+              Break active — timer is counting down
+            </div>
+          )}
           <div className="rounded-3xl border border-primary/20 p-4 shadow-sm">
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-primary">
@@ -192,7 +317,7 @@ const App = () => {
                     onClick={handleDecrementBreak}
                     aria-label="Decrease break minutes"
                   >
-                    −
+                    -
                   </Button>
                   <input
                     type="number"
@@ -200,7 +325,9 @@ const App = () => {
                     min={0}
                     className="w-24 rounded-2xl bg-background px-3 py-2 text-center font-mono text-lg text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                     value={breakMinutes.toString()}
-                    onChange={(event) => handleBreakMinutesChange(event.target.value)}
+                    onChange={(event) =>
+                      handleBreakMinutesChange(event.target.value)
+                    }
                   />
                   <Button
                     type="button"
@@ -224,10 +351,10 @@ const App = () => {
               type="button"
               variant="default"
               className="px-6"
-              disabled={!canPurchaseBreak}
+              disabled={!canPurchaseBreak || isBreakMode}
               onClick={handlePurchaseBreak}
             >
-              Purchase break
+              {isBreakMode ? 'Break in progress' : 'Purchase break'}
             </Button>
           </div>
         </div>

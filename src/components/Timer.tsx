@@ -12,6 +12,7 @@ export type TimerProps = {
   setTimeRemaining: Dispatch<SetStateAction<number>>;
   variant: 'expanded' | 'compact';
   onClick?: () => void;
+  mode?: 'work' | 'break';
 };
 
 const ClockIcon = (props: SVGProps<SVGSVGElement>) => (
@@ -37,6 +38,7 @@ export const Timer = ({
   setTimeRemaining,
   variant,
   onClick,
+  mode = 'work',
 }: TimerProps) => {
   const parsedDeadline = useMemo(() => {
     if (deadline instanceof Date) {
@@ -89,11 +91,20 @@ export const Timer = ({
   const isCompact = variant === 'compact';
   const isInteractive = typeof onClick === 'function';
   const isFinished = timeLeft.raw <= 0;
+  const isBreakMode = mode === 'break';
+
+  const activeLabel = isBreakMode ? 'Break time!' : 'Work time!';
+  const finishedLabel = isBreakMode ? 'Break over!' : 'Time over!';
+  const compactLabel = isBreakMode ? 'Break' : 'Timer';
+
+  const accentClass = isBreakMode ? 'text-amber-300' : 'text-primary';
 
   const expandedContent = isFinished ? (
     <div className="flex flex-col items-center justify-center gap-6">
-      <div className="flex items-center justify-center gap-3 text-primary">
-        <span className="uppercase tracking-[0.35em] text-sm">Time over!</span>
+      <div className={`flex items-center justify-center gap-3 ${accentClass}`}>
+        <span className="uppercase tracking-[0.35em] text-sm">
+          {finishedLabel}
+        </span>
       </div>
       <div className="font-mono text-6xl md:text-7xl font-semibold text-foreground">
         00:00
@@ -101,9 +112,11 @@ export const Timer = ({
     </div>
   ) : (
     <div className="flex flex-col items-center justify-center gap-6">
-      <div className="flex items-center justify-center gap-3 text-primary">
-        <ClockIcon className="h-8 w-8" />
-        <span className="uppercase tracking-[0.35em] text-sm">Work time!</span>
+      <div className={`flex items-center justify-center gap-3 ${accentClass}`}>
+        <ClockIcon className={`h-8 w-8 ${accentClass}`} />
+        <span className="uppercase tracking-[0.35em] text-sm">
+          {activeLabel}
+        </span>
       </div>
 
       <div className="font-mono text-6xl md:text-7xl font-semibold text-foreground">
@@ -114,9 +127,11 @@ export const Timer = ({
 
   const compactContent = (
     <div className="flex items-center justify-center gap-3">
-      <ClockIcon className="h-5 w-5 text-primary" />
-      <span className="uppercase tracking-[0.35em] text-xs md:text-sm">
-        Timer
+      <ClockIcon className={`h-5 w-5 ${accentClass}`} />
+      <span
+        className={`uppercase tracking-[0.35em] text-xs md:text-sm ${accentClass}`}
+      >
+        {compactLabel}
       </span>
       <span className="font-mono text-lg md:text-xl font-semibold text-foreground">
         {minutesDisplay}:{secondsDisplay}

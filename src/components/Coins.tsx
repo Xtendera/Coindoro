@@ -22,21 +22,21 @@ const coinsFromRemaining = (remaining: number, sessionDuration: number) => {
 export type CoinsProps = {
   variant: 'expanded' | 'compact';
   onClick?: () => void;
-  timeRemaining: number;
   sessionDuration: number;
   deadline: Date;
   paused: boolean;
   baseCoins: number;
+  breakActive?: boolean;
 };
 
 export const Coins = ({
   variant,
   onClick,
-  timeRemaining,
   sessionDuration,
   deadline,
   paused,
   baseCoins,
+  breakActive = false,
 }: CoinsProps) => {
   const isCompact = variant === 'compact';
   const isInteractive = typeof onClick === 'function';
@@ -44,15 +44,17 @@ export const Coins = ({
   // IG useMemo is useless bcs I am using react router but ill do it anyways.
   const deadlineTimestamp = useMemo(() => deadline.getTime(), [deadline]);
 
-  const staticSessionCoins = useMemo(() => {
-    const remaining = paused
-      ? clampRemaining(timeRemaining, sessionDuration)
-      : clampRemaining(deadlineTimestamp - Date.now(), sessionDuration);
+  const remainingForStatic = clampRemaining(
+    deadlineTimestamp - Date.now(),
+    sessionDuration
+  );
+  const staticSessionCoins = breakActive
+    ? 0
+    : coinsFromRemaining(remainingForStatic, sessionDuration);
 
-    return coinsFromRemaining(remaining, sessionDuration);
-  }, [paused, timeRemaining, sessionDuration, deadlineTimestamp]);
-
-  const targetCoinsTotal = baseCoins + staticSessionCoins;
+  const targetCoinsTotal = breakActive
+    ? baseCoins
+    : baseCoins + staticSessionCoins;
 
   const [displayCoins, setDisplayCoins] = useState(targetCoinsTotal);
 
@@ -61,17 +63,22 @@ export const Coins = ({
   }, [targetCoinsTotal]);
 
   const computeLiveCoins = useCallback(() => {
+    // Don't calculate coins on a break
+    if (breakActive) {
+      return baseCoins;
+    }
+
     const liveRemaining = clampRemaining(
       deadlineTimestamp - Date.now(),
       sessionDuration
     );
 
     return baseCoins + coinsFromRemaining(liveRemaining, sessionDuration);
-  }, [deadlineTimestamp, sessionDuration, baseCoins]);
+  }, [breakActive, deadlineTimestamp, sessionDuration, baseCoins]);
 
   // Calculate fractional coins if u are in the big view
   useEffect(() => {
-    if (variant !== 'expanded' || paused) {
+    if (variant !== 'expanded' || paused || breakActive) {
       return;
     }
 
@@ -98,7 +105,7 @@ export const Coins = ({
         cancelAnimationFrame(frameId);
       }
     };
-  }, [variant, paused, computeLiveCoins, deadlineTimestamp, sessionDuration]);
+  }, [variant, paused, breakActive, computeLiveCoins, deadlineTimestamp, sessionDuration]);
 
   const compactCoins = Math.floor(displayCoins);
   const expandedCoins = displayCoins;
