@@ -1,111 +1,65 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 
 import coin from '../assets/coin.png';
 
-const FIVE_MINUTES_MS = 5 * 60 * 1000;
-
-const clampRemaining = (remaining: number, sessionDuration: number) =>
-  Math.max(0, Math.min(sessionDuration, remaining));
-
-const coinsFromRemaining = (remaining: number, sessionDuration: number) => {
-  const clamped = clampRemaining(remaining, sessionDuration);
-  const elapsed = sessionDuration - clamped;
-  if (sessionDuration <= 0) {
-    return 0;
-  }
-
-  return Math.max(0, elapsed / FIVE_MINUTES_MS);
-};
-
 export type CoinsProps = {
   variant: 'expanded' | 'compact';
   onClick?: () => void;
-  sessionDuration: number;
-  deadline: Date;
-  paused: boolean;
-  baseCoins: number;
+  coins: number;
   breakActive?: boolean;
+  isAccruing?: boolean;
+  coinIntervalMs: number;
 };
 
 export const Coins = ({
   variant,
   onClick,
-  sessionDuration,
-  deadline,
-  paused,
-  baseCoins,
+  coins,
   breakActive = false,
+  isAccruing = false,
+  coinIntervalMs,
 }: CoinsProps) => {
   const isCompact = variant === 'compact';
   const isInteractive = typeof onClick === 'function';
-
-  // IG useMemo is useless bcs I am using react router but ill do it anyways.
-  const deadlineTimestamp = useMemo(() => deadline.getTime(), [deadline]);
-
-  const remainingForStatic = clampRemaining(
-    deadlineTimestamp - Date.now(),
-    sessionDuration
-  );
-  const staticSessionCoins = breakActive
-    ? 0
-    : coinsFromRemaining(remainingForStatic, sessionDuration);
-
-  const targetCoinsTotal = breakActive
-    ? baseCoins
-    : baseCoins + staticSessionCoins;
-
-  const [displayCoins, setDisplayCoins] = useState(targetCoinsTotal);
+  const syncedCoinsRef = useRef(coins);
+  const syncedAtRef = useRef<number>(Date.now());
+  const [displayCoins, setDisplayCoins] = useState(coins);
 
   useEffect(() => {
-    setDisplayCoins(targetCoinsTotal);
-  }, [targetCoinsTotal]);
+    syncedCoinsRef.current = coins;
+    syncedAtRef.current = Date.now();
+    setDisplayCoins(coins);
+  }, [coins]);
 
-  const computeLiveCoins = useCallback(() => {
-    // Don't calculate coins on a break
-    if (breakActive) {
-      return baseCoins;
-    }
-
-    const liveRemaining = clampRemaining(
-      deadlineTimestamp - Date.now(),
-      sessionDuration
-    );
-
-    return baseCoins + coinsFromRemaining(liveRemaining, sessionDuration);
-  }, [breakActive, deadlineTimestamp, sessionDuration, baseCoins]);
-
-  // Calculate fractional coins if u are in the big view
   useEffect(() => {
-    if (variant !== 'expanded' || paused || breakActive) {
+    const canSmooth =
+      variant === 'expanded' &&
+      !breakActive &&
+      isAccruing &&
+      Number.isFinite(coinIntervalMs) &&
+      coinIntervalMs > 0;
+
+    if (!canSmooth) {
+      syncedCoinsRef.current = coins;
+      syncedAtRef.current = Date.now();
+      setDisplayCoins(coins);
       return;
     }
 
-    let frameId: number | undefined;
-
-    const tick = () => {
-      const coinsValue = computeLiveCoins();
-      setDisplayCoins(coinsValue);
-
-      const remaining = clampRemaining(
-        deadlineTimestamp - Date.now(),
-        sessionDuration
-      );
-
-      if (remaining > 0 && !paused) {
-        frameId = requestAnimationFrame(tick);
-      }
-    };
-
-    tick();
+    const intervalMs = 50;
+    const timer = window.setInterval(() => {
+      const base = syncedCoinsRef.current;
+      const elapsed = Date.now() - syncedAtRef.current;
+      const estimated = base + elapsed / coinIntervalMs;
+      setDisplayCoins(estimated);
+    }, intervalMs);
 
     return () => {
-      if (frameId !== undefined) {
-        cancelAnimationFrame(frameId);
-      }
+      window.clearInterval(timer);
     };
-  }, [variant, paused, breakActive, computeLiveCoins, deadlineTimestamp, sessionDuration]);
+  }, [variant, breakActive, isAccruing, coins, coinIntervalMs]);
 
   const compactCoins = Math.floor(displayCoins);
   const expandedCoins = displayCoins;
@@ -122,8 +76,8 @@ export const Coins = ({
         onClick={onClick}
         disabled={!isInteractive}
         className={cn(
-          'w-full rounded-3xl border border-primary/30 bg-card backdrop-blur-sm shadow-lg transition-all duration-300 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
-          isCompact ? 'px-6 py-3' : 'p-10',
+          'w-full rounded-3xl border border-primary/30 bg-card backdrop-blur-sm shadow-primary transition-all duration-300 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+          isCompact ? 'px-6 py-3' : 'p-10 shadow-lg',
           isInteractive ? 'cursor-pointer' : 'cursor-default',
           breakActive ? 'text-amber-300' : 'text-primary'
         )}
