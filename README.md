@@ -1,6 +1,6 @@
 # Coindoro
 
-Welcome to the currency-based time tracking app!
+Welcome to the currency-based time tracking app! This lets you earn coins that you can spend on breaks!
 
 ## Run Instructions
 

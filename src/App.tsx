@@ -158,7 +158,7 @@ const App = () => {
       const autoStart = options?.autoStart ?? true; // TODO: Configuration menu
       scheduleTimer(sessionLengthMs);
       setMode('work');
-  sessionCoinsRef.current = 0;
+      sessionCoinsRef.current = 0;
       lastTickRef.current = null;
       setPaused(!autoStart);
     },
@@ -180,6 +180,23 @@ const App = () => {
     setNotificationPermission(Notification.permission);
     return Notification.permission;
   }, []);
+
+  const handleFocusMinutesChange = useCallback(
+    (next: number) => {
+      setFocusMinutes(next);
+
+      if (mode !== 'work') {
+        return;
+      }
+
+      const nextDurationMs = next * MINUTE;
+
+      sessionCoinsRef.current = 0;
+      lastTickRef.current = null;
+      scheduleTimer(nextDurationMs);
+    },
+    [mode, scheduleTimer]
+  );
 
   const handleToggleTimer = () => {
     if (mode === 'break') {
@@ -228,7 +245,7 @@ const App = () => {
   };
 
   const handleRestart = () => {
-  sessionCoinsRef.current = 0;
+    sessionCoinsRef.current = 0;
     lastTickRef.current = null;
     startWorkSession();
   };
@@ -308,7 +325,7 @@ const App = () => {
     setCoinBank((previous) => Math.max(0, previous - breakCost));
     scheduleTimer(breakDurationMs);
     setMode('break');
-  sessionCoinsRef.current = 0;
+    sessionCoinsRef.current = 0;
     lastTickRef.current = null;
     setPaused(false);
     setActivePanel('timer');
@@ -426,7 +443,7 @@ const App = () => {
         open={isSettingsOpen}
         onClose={handleCloseSettings}
         focusMinutes={focusMinutes}
-        onFocusMinutesChange={setFocusMinutes}
+        onFocusMinutesChange={handleFocusMinutesChange}
         minutesPerCoin={minutesPerCoin}
         onMinutesPerCoinChange={setMinutesPerCoin}
       />
