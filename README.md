@@ -2,6 +2,11 @@
 
 Welcome to the currency-based time tracking app! This lets you earn coins that you can spend on breaks!
 
+**Focus Time**: This is time for you to work! Lock in so you can earn coins!
+**Free Time**: This is time you can "purchase" by spending coins. Play games, watch videos, or even code! The choice is yours!
+
+*This project was made for the Siege challenge by HackClub. Thank you!*
+
 ## Run Instructions
 
 Install the project dependencies:
